@@ -51,8 +51,15 @@ from utils import plot_camera_scene
 from pytorch3d.renderer.cameras import (
     SfMPerspectiveCameras,
 )
+PATH = r'/home/neta-katz@staff.technion.ac.il/Downloads/'
+
+from datetime import datetime
+now = datetime.now()
+string_now = now.strftime("%m_%d_%Y_%H-%M-%S")
+print("Strating time: ", string_now)
+
 def get_data():
-    data_train_paths = [f for f in glob.glob(r'/home/neta-katz@staff.technion.ac.il/Downloads/*.pkl')]
+    data_train_paths = [f for f in glob.glob(PATH +r'*.pkl')]
     # Do not put more than 1 pkl file!!!
     for path in data_train_paths:
         with open(path, 'rb') as outfile:
@@ -567,7 +574,7 @@ batch_size = 6
 # 3000 iterations take ~20 min on a Tesla M40 and lead to
 # reasonably sharp results. However, for the best possible
 # results, we recommend setting n_iter=20000.
-n_iter = 20000
+n_iter = 200
 
 # Init the loss history buffers.
 loss_history_color, loss_history_sil = [], []
@@ -676,3 +683,5 @@ for iteration in range(n_iter):
         print("T: ", target_cameras.T[show_idx])
         if iteration > 1000:
             pass
+
+torch.save(neural_radiance_field.state_dict(), PATH + string_now)
