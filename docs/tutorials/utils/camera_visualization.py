@@ -25,7 +25,7 @@ def plot_cameras(ax, cameras, color: str = "green"):
         # the Z and Y axes are flipped intentionally here!
         x_, y_, z_ = wire.detach().cpu().numpy().T.astype(float)
         # x_, z_, y_ = wire.detach().cpu().numpy().T.astype(float)
-        (h,) = ax.plot(x_, y_, z_, color=colors[i], linewidth=0.3)
+        (h,) = ax.plot(x_, y_, z_, color=color, linewidth=0.3)
         plot_handles.append(h)
         i = i + 1
     return plot_handles
