@@ -16,6 +16,7 @@ import numpy as np
 from PIL import Image
 from IPython import display
 from tqdm.notebook import tqdm
+from sklearn.model_selection import train_test_split
 import pytorch3d
 sys.path.append('/home/neta-katz@staff.technion.ac.il/anaconda3/envs/pytorch3d')
 # Data structures and functions for rendering
@@ -51,6 +52,7 @@ from utils import plot_camera_scene
 from pytorch3d.renderer.cameras import (
     SfMPerspectiveCameras,
 )
+from random import randrange
 PATH = r'/home/neta-katz@staff.technion.ac.il/Downloads/'
 
 from datetime import datetime
@@ -58,7 +60,7 @@ now = datetime.now()
 string_now = now.strftime("%m_%d_%Y_%H-%M-%S")
 print("Strating time: ", string_now)
 
-def get_data():
+def get_data(test_size=9):
     data_train_paths = [f for f in glob.glob(PATH +r'*.pkl')]
     # Do not put more than 1 pkl file!!!
     for path in data_train_paths:
@@ -66,6 +68,11 @@ def get_data():
             x = pickle.load(outfile)
             # plot cameras
             R = np.array([r.T for r in x["cameras_R"]])
+            R_test =R[:test_size]
+            R_training = R[test_size:]
+            T = x["cameras_pos"]
+            T_test = T[:test_size]
+            T_training = T[test_size:]
             cameras_absolute_gt = SfMPerspectiveCameras(
                 R=R,
                 T=x["cameras_pos"]/100,
@@ -73,7 +80,8 @@ def get_data():
             )
             plot_camera_scene(cameras_absolute_gt, cameras_absolute_gt, "HI")
             # plt.imshow(x["images"][0], interpolation='nearest', cmap='gray')
-            cameras = FoVPerspectiveCameras(device=device, R=R, T=x["cameras_pos"])
+            cameras_training = FoVPerspectiveCameras(device=device, R=R_training, T=T_training)
+            cameras_test = FoVPerspectiveCameras(device=device, R=R_test, T=T_test)
             # plt.imshow((np.stack((x["images"],)*3, axis=-1)*3)[0], interpolation='nearest', cmap='gray')
             temp_max = torch.from_numpy(np.stack((x["images"],)*3, axis=-1))[0].max()
             temp_min = torch.from_numpy(np.stack((x["images"],)*3, axis=-1))[0] .min()
@@ -81,48 +89,40 @@ def get_data():
             # plt.imshow(y, interpolation='nearest', cmap='Dark2')
             # print(torch.from_numpy(np.stack((x["images"],)*3, axis=-1)).max())
             # print(torch.from_numpy(np.stack((x["images"],)*3, axis=-1)).min())
-            images = torch.from_numpy(np.stack((x["images"],)*3, axis=-1))
-            images = (images - images.min())/(images.max() - images.min())
+            # images_train, x_test = train_test_split(np.stack((x["images"],)*3, axis=-1), test_size=0.1)
+            images = x["images"][0,:,0]
+            images_test = images[:test_size]
+            images_training = images[test_size:]
+
+            images = torch.from_numpy(np.stack((images,)*3, axis=-1))
+            # images = (images - images.min())/(images.max() - images.min())
+
+            images_test = torch.from_numpy(np.stack((images_test,) * 3, axis=-1))
+            images_test = images_test.float()
+            images_test = (images_test - images.min()) / (images.max() - images.min())
+
+            images_training = torch.from_numpy(np.stack((images_training,) * 3, axis=-1))
+            images_training = images_training.float()
+            images_training = (images_training - images.min()) / (images.max() - images.min())
             # print(images.max(), images.min())
             # print(images)
             # print(torch.from_numpy(np.stack((x["images"],)*3, axis=-1))[0])
-            plt.imshow(images[0], interpolation='nearest', cmap='Dark2')
+            # plt.imshow(images[0], interpolation='nearest', cmap='Dark2')
             # print("og grayscale", x["images"][0])
             # print("rgb changed", (np.stack((x["images"],)*3, axis=-1)/3)[0])
-            return cameras, images # torch.from_numpy(np.stack((x["images"],)*3, axis=-1)*10)
+            return cameras_training, images_training, cameras_test, images_test# torch.from_numpy(np.stack((x["images"],)*3, axis=-1)*10)
 
+cloud_training_cameras, cloud_training_images, cloud_test_cameras, cloud_test_images = get_data()
 
-target_cameras, target_images, target_silhouettes = generate_cow_renders(num_views=40, azimuth_range=180)
-# target_images = torchvision.transforms.functional.rgb_to_grayscale(target_images, 3)
-target_images = torch.transpose(target_images, 3, 2)
-target_images = torch.transpose(target_images, 2, 1)
-target_images = torchvision.transforms.functional.rgb_to_grayscale(target_images, 3)
-target_images = torch.transpose(target_images, 1, 2)
-target_images = torch.transpose(target_images, 2, 3)
+cloud_training_silhouettes = torch.zeros([84, 154, 154], dtype=torch.float32)
+cloud_training_silhouettes[:] = cloud_training_images[:,:,:,0]
 
-circle_img = torch.zeros([94, 94], dtype=torch.float32)
-R = 32
-for i in range(94):
-    for j in range(94):
-        if pow(i-47, 2) + pow(j-47, 2) < pow(R, 2):
-            circle_img[i, j] = 1.0
+cloud_test_silhouettes = torch.zeros([9, 154, 154], dtype=torch.float32)
+cloud_test_silhouettes[:] = cloud_test_images[:,:,:,0]
 
-circle_silhouettes = torch.zeros([10, 94, 94], dtype=torch.float32)
-circle_silhouettes[:] = circle_img
-
-circle_img = torch.from_numpy(np.stack((circle_img,)*3, axis=-1))
-
-circle_images = torch.zeros([10, 94, 94, 3], dtype=torch.float32)
-circle_images[:] = circle_img
-
-cloud_cameras, cloud_images = get_data()
-
-cloud_silhouettes = torch.zeros([10, 94, 94], dtype=torch.float32)
-cloud_silhouettes[:] = cloud_images[:,:,:,1]
-
-target_images = cloud_images
-target_silhouettes = cloud_silhouettes
-target_cameras = cloud_cameras
+target_images = cloud_training_images
+target_silhouettes = cloud_training_silhouettes
+target_cameras = cloud_training_cameras
 
 print(f'Generated {len(target_images)} images/silhouettes/cameras.')
 # render_size describes the size of both sides of the
@@ -550,6 +550,8 @@ def show_full_render(
     return fig
 
 
+
+
 # First move all relevant variables to the correct device.
 renderer_grid = renderer_grid.to(device)
 renderer_mc = renderer_mc.to(device)
@@ -574,7 +576,7 @@ batch_size = 6
 # 3000 iterations take ~20 min on a Tesla M40 and lead to
 # reasonably sharp results. However, for the best possible
 # results, we recommend setting n_iter=20000.
-n_iter = 200
+n_iter = 200000
 
 # Init the loss history buffers.
 loss_history_color, loss_history_sil = [], []
@@ -679,9 +681,27 @@ for iteration in range(n_iter):
             loss_history_sil,
         )
         print("show_idx: ", show_idx)
-        print("R: ", target_cameras.R[show_idx])
-        print("T: ", target_cameras.T[show_idx])
-        if iteration > 1000:
-            pass
 
 torch.save(neural_radiance_field.state_dict(), PATH + string_now)
+
+# check test!
+
+neural_radiance_field.eval()
+
+for test_camera, test_img, test_sill in zip(cloud_test_cameras, cloud_test_images, cloud_test_silhouettes):
+    show_full_render(
+        neural_radiance_field,
+        FoVPerspectiveCameras(
+            R=test_camera.R,
+            T=test_camera.T,
+            znear=test_camera.znear,
+            zfar=test_camera.zfar,
+            aspect_ratio=test_camera.aspect_ratio,
+            fov=test_camera.fov,
+            device=device,
+        ),
+        test_img,
+        test_sill,
+        loss_history_color,
+        loss_history_sil,
+    )
